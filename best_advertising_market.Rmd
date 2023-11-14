@@ -1,0 +1,387 @@
+---
+title: "Finding Best Markets for Advertisement"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(tidyverse)
+library(knitr)
+library(RCurl)
+library(kableExtra)
+```
+
+The purpose of this project is to find best markets to advertise subscription product of e-learning company that offers programming course. Most of the company course is web and mobile development.
+
+## Understanding the data
+
+To avoid spending money on organizing survey, we'll first try to make use of existing data for reliable results.
+
+one good candidate for our purpose is [freeCodeCamp's 2017 New Coder Survey](https://www.freecodecamp.org/news/we-asked-20-000-people-who-they-are-and-how-theyre-learning-to-code-fff5d668969). [freeCodeCamp](https://www.freecodecamp.org/) is a free e-learning platform that offers courses on web development. Because they run a [popular Medium publication](https://www.freecodecamp.org/news/)(over 400,000 followers), their survey attracted new coders with varying interests (not only web development), which is deal for the purpose of our analysis.
+
+The survey data is publicly available in this [GitHub repository](https://github.com/freeCodeCamp/2017-new-coder-survey). Below, we'll do a quick exploration of the `2017-fCC-New-Coders-Survey-Data.csv` file stored in the clean-data folder of the repository we just mentioned. we'll read in the file using the direct link [here](https://raw.githubusercontent.com/freeCodeCamp/2017-new-coder-survey/master/clean-data/2017-fCC-New-Coders-Survey-Data.csv).
+
+```{r}
+# loading data from URL using RCurl package
+df_new_coders <- read.csv(text = getURL("https://raw.githubusercontent.com/freeCodeCamp/2017-new-coder-survey/master/clean-data/2017-fCC-New-Coders-Survey-Data.csv"))
+
+# getting glimpse of dataset
+kbl(head(df_new_coders)) %>% kable_paper('striped') %>% scroll_box(width = "100%")
+```
+
+
+AS we can see there are *`r dim(df_new_coders)[2]`* columns, so we gonna select few column that help us to find best markets for our ad campaign.
+
+```{r}
+# selecting those column which are needed for our analysis
+df_new_coders <- df_new_coders %>% select(CountryCitizen, CountryLive, JobRoleInterest, MoneyForLearning, MonthsProgramming, AttendedBootcamp)
+```
+
+
+## Check for Sample Representative
+
+As we mentioned in introduction that we offer most of the course related to web and mobile development and other domain also. For the purpose of our analysis, we want to know about the population of new coders that are interested in subject we teach. We'd like to know:
+
+- Where are these coders located.
+- Which location have greatest densities of new coders.
+- How much they are willing to spend on learning.
+
+So we first need to clarify whether the data set has the right categories of people for our purpose. The `JobRoleInterest` column describes for every participant the role(s) they'd be interested in working in. If a participant is interested in working in a certain domain, it means that they're also interested in learning about that domain. So let's take a look at frequency distribution table of this column and determine whether the data we have is relevant.
+
+```{r}
+# calculating job role distribution and sort them from most to least
+jobRole <- 
+  transform(
+      as.data.frame(
+        sort(
+          prop.table(table(df_new_coders$JobRoleInterest)) * 100,
+          decreasing = T
+        )
+    ),
+    Freq = round(Freq,2)
+  )
+
+# Rename the column 
+colnames(jobRole) <- c("Job Role", "Percent")
+
+# making table with kable and kableExtra
+kbl(head(jobRole,20), caption = "Top 20 Job Role") %>% kable_styling(bootstrap_options = "striped", full_width = F) 
+```
+
+The above information is quite granular, but from quick scan we can say that:
+
+- A lot of people are interested in web development (full-stacked web development, front-end web development, back-end web development)
+- A few people are interested in Mobile development.
+- A few people are interested domains other than web and mobile development.
+
+It’s also interesting to note that many respondents are interested in more than one subject. It’d be useful to get a better picture of how many people are interested in a single subject and how many have mixed interests.
+
+```{r}
+# Extract respond of JOb Role
+JobRole_interested <- na.omit(df_new_coders$JobRoleInterest)
+
+# Counting the number of preference Job Role
+count_jobRole <- str_count(JobRole_interested, ",") + 1
+
+# Calculating frequency of the Role
+no_of_jobRole <- 
+  transform(
+      as.data.frame(
+        sort(
+          prop.table(table(count_jobRole)) * 100,
+          decreasing = T
+        )
+      ),
+    Freq = round(Freq, 2) 
+  )
+
+# Rename the column 
+colnames(no_of_jobRole) <- c("No of Job Role", "Percent")
+
+# making table with kable and kableExtra
+kbl(no_of_jobRole) %>% kable_styling(bootstrap_options = "striped", full_width = F) 
+
+```
+
+It turns out that only **`r no_of_jobRole[1,2]`%** of the participants have a clear idea about what programming niche they’d like to work in, while the vast majority of students have mixed interests. But given that we offer courses on various subjects, the fact that new coders have mixed interest might be actually good for us.
+
+The focus of our courses is on web and mobile development, so let’s find out how many respondents chose at least one of these two options.
+
+```{r}
+# Finding who are interested in web and mobile development
+wNm_developer <- str_detect(JobRole_interested, regex("(web|mobile).(developer|development)", ignore_case = T))
+
+# frequency
+wNm_tbl <- 
+  transform(
+    as.data.frame(
+      sort(
+        prop.table(table(wNm_developer)) * 100,
+        decreasing = T
+      )
+    ),
+    Freq = round(Freq, 2)
+  )
+
+# Naming the columns
+colnames(wNm_tbl) <- c("Categories", "Percent")
+
+# Barplot
+ggplot(wNm_tbl, aes(Categories, Percent , fill = Categories)) +
+  geom_col(width = .5) +
+  ggtitle("Participant Interested in\n Web and Mobile development") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust=.5,size=18,color="blue", face = "bold"),
+        legend.position = "none") +
+  scale_x_discrete(labels = if_else(wNm_tbl$Categories == TRUE, "Web and Mobile\n Development", "Other Subject")) +
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  geom_text(aes(label = paste0(Percent , "%")), color = "white", fontface = "bold", position = position_stack(.5))
+```
+ 
+It turns out that most people in this survey (roughly `r wNm_tbl[1,2]`%) are interested in either web or mobile development. These figures offer us a strong reason to consider this sample representative for our population of interest. We want to advertise our courses to people interested in all sorts of programming niches but mostly web and mobile development.
+
+Now we need to figure out what are the best markets to invest money in for advertising our courses. We’d like to know:
+
+- Where are these new coders located.
+- What are the locations with the greatest number of new coders.
+- How much money new coders are willing to spend on learning.
+
+## New Coders - Location and Densities
+
+Let’s find out where these new coders are located and densities (how many new coders are there) for each location. It should be a good idea to find best two markets to run the ads campaign in.
+
+The data set provides information about the location of each participant at a country level. We can think of each country as an individual market, so we can frame our goal as finding the two best countries to advertise in.
+
+We can start by examining the frequency distribution table of the `CountryLive variable`, which describes what country each participant lives in (not their origin country). We’ll only consider those participants who answered what role(s) they’re interested in, to make sure we work with a representative sample.
+
+```{r}
+
+# keeping those rows who is interested in jobRole
+market <- df_new_coders %>% filter(!is.na(JobRoleInterest)) %>% summarise(Population = n(), .by = CountryLive) %>% arrange(desc(Population)) %>% filter(!is.na(CountryLive)) %>% mutate (Percent = round(Population / sum(Population) * 100,2))
+
+#making table with kable and kableExtra
+kbl(head(market, 10), caption = "Top 10 Countries") %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+`r market[1,3]`% of our potential customers are located in the US, and this
+definitely seems like the most interesting market. `r market[2,1]` has the second customer density, but it’s just `r market[2,3]`%, which is not too far from the `r market[3,1]` ( `r market[3,3]`%) or `r market[4,1]` ( `r market[4,3]`%).
+
+This is useful information, but we need to go more in depth than this and figure out how much money people are actually willing to spend on learning. Advertising in high-density markets where most people are only willing to learn for free is extremely unlikely to be profitable for us.
+
+## Spending Money for Learning
+
+The `MoneyForLearning` column describes in American dollars the amount of money spent by participants from the moment they started coding until the moment they completed the survey. Suppose Our company sells subscriptions at a price of \$59 per month, and for this reason we’re interested in finding out how much money each student spends per month.
+
+```{r}
+# choosing Market for analysis
+interested_market <- market %>% mutate(cumlative = cumsum(Percent)) %>% filter(!is.na(CountryLive) &cumlative <= 62) %>%  pull(CountryLive) %>% as.vector()
+```
+
+
+We’ll narrow down our analysis to only `r length(interested_market)` countries: `r paste(sapply(interested_market, as.character),collapse = ", ")`. We do this for two reasons:
+
+- These are the countries having the highest frequency in the frequency table above, which means we have a decent amount of data for each.
+- Our courses are written in English, and English is an official language in all these `r length(interested_market)` countries. The more people know English, the better our chances to target the right people with our ads.
+
+Let’s start with creating a new column that describes the amount of money a student has spent per month so far. To do that, we’ll need to divide the `MoneyForLearning` column to the `MonthsProgramming` column. The problem is that some students answered that they have been learning to code for 0 months (it might be that they have just started). To avoid dividing by 0, we’ll replace 0 with 1 in the `MonthsProgramming` column.
+
+```{r}
+# calculating Money spend per month
+money_spender <- df_new_coders %>% filter(!is.na(JobRoleInterest) & (!is.na(MoneyForLearning) & !is.na(MonthsProgramming)) & CountryLive %in% interested_market) %>%  mutate(MonthsProgramming = if_else(MonthsProgramming == 0 , 1 , MonthsProgramming), MonthSpending = round(MoneyForLearning / MonthsProgramming,2))
+```
+
+
+We want to group the data by country, and then measure the average amount of money that students spend per month in each country. First, let’s remove the rows having null values for the `CountryLive` column, and check out if we still have enough data for the four countries that interest us.
+
+```{r}
+# keeping only spender 
+money_spender %>% filter(!is.na(MonthSpending)) %>% summarise(Population = n(), .by = CountryLive) %>% arrange(desc(Population)) 
+```
+
+This should be enough, so let’s compute the average value spent per month in each country by a student. We’ll compute the average using the mean.
+
+```{r}
+# calculating how much amount can each country spend
+money_spender %>% summarise(Spending = round(mean(MonthSpending),2), .by = CountryLive)
+```
+
+The results for the United Kingdom and Canada are a bit surprising relative to the values we see for India. If we considered a few socio-economical metrics (like GDP per capita), we’d intuitively expect people in the UK and Canada to spend more on learning than people in India.
+
+It might be that we don’t have have enough representative data for the United Kingdom and Canada, or we have some outliers (maybe coming from wrong survey answers) making the mean too large for India, or too low for the UK and Canada. Or it might be that the results are correct.
+
+## Dealing with Extreme Outliers
+
+Let’s use box plots to visualize the distribution of the
+`money_spend_month` variable for each country.
+
+```{r}
+# Boxplot
+money_spender %>% 
+  ggplot(aes(CountryLive, MonthSpending)) + 
+  geom_boxplot() +
+  scale_x_discrete(label = c("United States of America" = "US"))
+```
+
+It’s hard to see on the plot above if there’s anything wrong with the data for the `r paste(sapply(interested_market[interested_market != "nited States of America"], as.character),collapse = ", ")`, but we can see immediately that there’s something really off for the US: two persons spend each month 50000 or more for learning. This is not impossible, but it seems extremely unlikely, so we’ll remove every value that goes over 20,000 per month and then calculate mean values and plot the box plots again.
+
+```{r}
+# removing outliers 
+money_spender <- money_spender %>% filter(MonthSpending <= 20000)
+money_spender %>% summarise(Spending = round(mean(MonthSpending),2), .by = CountryLive) %>% arrange(desc(Spending))
+
+# box plot of each country after removing money spend which is greater than 20000
+money_spender[money_spender$MonthSpending <= 20000,] %>% 
+  ggplot(aes(CountryLive,MonthSpending)) + 
+  geom_boxplot() +
+  scale_x_discrete(label = c("United States of America" = "US"))
+
+```
+
+We can see a few extreme outliers for India (values over \$2500 per month), but it’s unclear whether this is good data or not. Maybe these persons attended several bootcamps, which tend to be very expensive. Let’s examine these data points to see if we can find anything relevant.
+
+```{r}
+
+# indian outliers
+indian_outliers <- money_spender[money_spender$CountryLive == "India" &
+                                   money_spender$MonthSpending >= 2500,]
+# making table using kable and kableExtra
+kbl(indian_outliers) %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+It seems that neither participant attended a bootcamp. Overall, it’s really hard to figure out from the data whether these persons really spent that much money with learning. The actual question of the survey was “Aside from university tuition, about how much money have you spent on learning to code so far (in US dollars)?”, so they might have misunderstood and thought university tuition is included. It seems safer to remove these rows.
+
+```{r}
+# Removing indian outliers 
+money_spender <- money_spender[!rownames(money_spender) %in% rownames(indian_outliers),]
+
+# Boxplot
+money_spender %>% 
+  ggplot(aes(CountryLive,MonthSpending)) + 
+  geom_boxplot() +
+  scale_x_discrete(label = c("United States of America" = "US"))
+```
+
+
+Looking back at the box plot above, we can also see more extreme outliers for the US (values over \$6000 per month). Let’s examine these participants in more detail.
+
+```{r}
+
+# checking US outliers
+us_outliers <- money_spender[money_spender$CountryLive == "United States of America" &
+                               money_spender$MonthSpending >= 6000,]
+
+kbl(us_outliers) %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+Out of these `r nrow(us_outliers)` extreme outliers, six people attended bootcamps, which justify the large sums of money spent on learning. For the other five, it’s hard to figure out from the data where they could have spent that much money on learning. Consequently, we’ll remove those rows where participants reported that they spend \$6000 each month, but they have never attended a bootcamp.
+
+Also, the data shows that eight respondents had been programming for no more than three months when they completed the survey. They most likely paid a large sum of money for a bootcamp that was going to last for several months, so the amount of money spent per month is unrealistic and should be significantly lower (because they probably didn’t spend anything for the next couple of months after the survey). As a consequence, we’ll remove every these eight outliers.
+
+In the next code block, we’ll remove respondents that:
+
+- Didn’t attend bootcamps.
+- Had been programming for three months or less when at the time they completed the survey.
+
+```{r}
+# Us outliers that don't attend any bootcamp
+no_bootcamp <- us_outliers[us_outliers$AttendedBootcamp == 0,]
+
+# Us outliers that have been programming less than 3 month
+lessThan_3month <- us_outliers[us_outliers$MonthsProgramming <= 3,]
+
+# Removing US outliers that doesnot attend bootcamp from data set
+money_spender <- money_spender[!rownames(money_spender) %in% rownames(no_bootcamp),]
+
+# Removing US outliers that programming less than 3 month from data set
+money_spender <- money_spender[!rownames(money_spender) %in% rownames(lessThan_3month),]
+
+# Boxplot
+money_spender %>% 
+  ggplot(aes(CountryLive,MonthSpending)) + 
+  geom_boxplot() +
+  scale_x_discrete(label = c("United States of America" = "US"))
+```
+
+
+Looking again at the last box plot above, we can also see an extreme outlier for Canada — a person who spends roughly \$5000 per month. Let’s
+examine this person in more depth.
+
+```{r}
+
+# checking canada outliers
+canada_outliers <- money_spender[money_spender$CountryLive == "Canada" &
+                                   money_spender$MonthSpending >= 5000,]
+kbl(canada_outliers) %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+Here, the situation is similar to some of the US respondents — this participant had been programming for no more than two months when he completed the survey. He seems to have paid a large sum of money in the beginning to enroll in a bootcamp, and then he probably didn’t spend anything for the next couple of months after the survey. We’ll take the same approach here as for the US and remove this outlier and then recompute the mean values and generate the final box plots.
+
+```{r}
+# Removing canada outliers
+money_spender <- money_spender[!rownames(money_spender) %in% rownames(canada_outliers),]
+
+# Summarise spending by country after removing all the relevant outliers
+final_result <- money_spender %>% summarise(Spending = round(mean(MonthSpending),2), .by = CountryLive) %>% arrange(desc(Spending))
+final_result
+
+# Boxplot
+money_spender %>% 
+  ggplot(aes(CountryLive,MonthSpending)) + 
+  geom_boxplot() +
+  scale_x_discrete(label = c("United States of America" = "US"))
+```
+
+## Choosing the Two Best Markets
+
+Obviously, one country we should advertise in is the US. Lots of new coders live there and they are willing to pay a good amount of money each month (roughly \$`r round(final_result[1,2])`).
+
+We sell subscriptions at a price of \$59 per month, and `r final_result[2,1]` seems to be the best second choice because people there are willing to pay roughly \$`r round(final_result[2,2])` per month, compared to `r final_result[3,1]` (\$`r round(final_result[3,2])`) and `r final_result[4,1]` (\$`r round(final_result[4,2])`).
+
+The data suggests strongly that we shouldn’t advertise in the UK, but let’s take a second look at India before deciding to choose Canada as our second best choice:
+
+- \$59 doesn’t seem like expensive sum for people in India since they spend on average \$66 each month.
+- We have almost twice as more potential customers in India than we have in Canada:
+
+```{r}
+
+# Calculating each country population
+country_population <- 
+  transform(
+    as.data.frame(
+      sort(
+        prop.table(table(money_spender$CountryLive)) * 100,
+        decreasing = T
+      )
+    ),
+    Freq = round(Freq,2)
+  )
+
+# assign column names for given data
+colnames(country_population) <- c("CountryLive", "Population (in %)")
+
+kbl(country_population) %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+So it’s not crystal clear what to choose between Canada and India. Although it seems more tempting to choose Canada, there are good chances that India might actually be a better choice because of the large number of potential customers.
+
+At this point, it seems that we have several options:
+
+1.  Advertise in the US, India, and Canada by splitting the advertisement budget in various combinations:
+
+  - 60% for the US, 25% for India, 15% for Canada.
+  - 50% for the US, 30% for India, 20% for Canada; etc.
+
+2.  Advertise only in the US and India, or the US and Canada. Again, it makes sense to split the advertisement budget unequally. For instance:
+
+  - 70% for the US, and 30% for India.
+  - 65% for the US, and 35% for Canada; etc.
+
+3.  Advertise only in the US.
+
+At this point, it’s probably best to send our analysis to the marketing team and let them use their domain knowledge to decide. They might want to do some extra surveys in India and Canada and then get back to us for analyzing the new survey data.
+
+## Conclusion
+
+In this project, we analyzed survey data from new coders to find the best two markets to advertise in. The only solid conclusion we reached is that the US would be a good market to advertise in.
+
+For the second best market, it wasn’t clear-cut what to choose between India and Canada. We decided to send the results to the marketing team so they can use their domain knowledge to take the best decision.
