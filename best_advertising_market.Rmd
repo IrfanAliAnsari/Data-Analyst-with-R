@@ -11,7 +11,7 @@ library(RCurl)
 library(kableExtra)
 ```
 
-The purpose of this project is to find best markets to advertise subscription product of e-learning company that offers programming course. Most of the company course is web and mobile development.
+The purpose of this project is to find best markets to advertise subscription product of e-learning company that offers programming course. Most of the company course is web and mobile development. You can found my source code [here](https://github.com/IrfanAliAnsari/Data-Analyst-with-R/blob/main/best_advertising_market.Rmd)
 
 ## Understanding the data
 
